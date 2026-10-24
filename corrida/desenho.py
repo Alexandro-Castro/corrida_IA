@@ -185,11 +185,11 @@ def desenhar_grafico(sup, rect, fontes, series, unidade=""):
 
 
 def _teto(valor):
-    """Um limite "redondo" para o eixo: 0,5 · 1 · 2 · 2,5 · 5 · 10 · 20 ..."""
+    """Um limite "redondo" para o eixo: 1 · 1,5 · 2 · 2,5 · 3 · 4 · 5 · 6 · 8 · 10 · 15 ..."""
     if valor <= 0:
         return 1.0
     potencia = 10 ** math.floor(math.log10(valor))
-    for passo in (1, 2, 2.5, 5, 10):
+    for passo in (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10):
         if valor <= passo * potencia:
             return passo * potencia
     return 10 * potencia

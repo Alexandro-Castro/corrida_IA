@@ -1,10 +1,16 @@
 # Corrida IA 🏁
 
-Redes neurais aprendendo a pilotar numa pista de corrida por **neuroevolução**: uma
-população de 100 carros, cada um com a sua própria rede neural, dirige ao mesmo tempo.
-Os que vão mais longe passam os "genes" (os pesos da rede) para a geração seguinte,
-com pequenas mutações. Em poucos minutos eles aprendem a fazer as curvas — e a frear
-antes delas.
+Redes neurais aprendendo a pilotar numa pista de corrida, com duas técnicas lado a lado:
+
+- **Neuroevolução:** uma população de 100 carros, cada um com a sua própria rede neural,
+  dirige ao mesmo tempo. Os que vão mais longe passam os "genes" (os pesos da rede)
+  para a geração seguinte, com pequenas mutações.
+- **Aprendizado por Reforço (PPO):** uma única rede aprende com a experiência de 256
+  carros dirigindo em paralelo, recebendo uma recompensa a cada passo — com PyTorch,
+  na GPU.
+
+Em poucos minutos elas aprendem a fazer as curvas — e a frear antes delas. Depois dá
+para comparar as duas, assistir, correr contra elas e testá-las em pistas que nunca viram.
 
 ![Tela de treino](docs/treino.jpg)
 
@@ -23,14 +29,24 @@ python -m venv .venv
 
 Precisa de Python 3.10 ou mais novo. Dependências: `numpy` e `pygame-ce`.
 
+**Para o PPO** (opcional), instale também o PyTorch — o arquivo já aponta para a versão
+com CUDA 12.8, que funciona nas placas NVIDIA, inclusive da série RTX 50 (é um download
+de ~3 GB). Sem placa NVIDIA, ele roda na CPU.
+
+```bash
+.venv\Scripts\python -m pip install -r requirements-rl.txt
+```
+
 ## O que dá para fazer
 
 | No menu | O que acontece |
 |---|---|
-| **Treinar do zero** | Solta 100 carros com redes aleatórias e assiste à evolução. O melhor cérebro é salvo sozinho sempre que bate o recorde. |
-| **Continuar treino** | Retoma a população de onde parou (o treino é salvo a cada geração). |
-| **Assistir a IA** | O melhor cérebro dirigindo sozinho. Troque de pista com ← → para ver se ele se vira numa pista que nunca viu. |
-| **Correr contra a IA** | Você (setas ou WASD) contra os 3 melhores cérebros, em 3 voltas. |
+| **Neuroevolução do zero** | Solta 100 carros com redes aleatórias e assiste à evolução. O melhor cérebro é salvo sozinho sempre que bate o recorde. |
+| **Continuar neuroevolução** | Retoma a população de onde parou (o treino é salvo a cada geração). |
+| **Treinar com PPO** | Aprendizado por Reforço ao vivo: os carros do treino explorando e um carro de teste mostrando o que a rede já sabe. Continua de onde parou. |
+| **Assistir a IA** | Um cérebro dirigindo sozinho (B troca de cérebro, ← → troca de pista — inclusive para pistas que ele nunca viu). |
+| **Correr contra a IA** | Você (setas ou WASD) contra 3 rivais, em 3 voltas — misturando as duas técnicas quando houver as duas. |
+| **Comparar as técnicas** | Cada cérebro salvo em cada pista, com a mesma avaliação, e as curvas de aprendizado medidas. |
 | **Editor de pistas** | Clique para criar pontos, arraste para ajustar; a pista se desenha sozinha. Teste dirigindo (T) ou veja a IA nela (A). |
 
 Dica para o treino: aperte **7** (velocidade máxima) e acompanhe o gráfico. Na pista
@@ -65,13 +81,94 @@ Quem é mais rápido anda mais no mesmo tempo, então a velocidade também é pr
 
 Não há backpropagation: a rede melhora só por seleção e mutação, como na evolução natural.
 
+## Aprendizado por Reforço (PPO)
+
+![Treino PPO](docs/ppo.jpg)
+
+O PPO usa a mesma pista, a mesma física, as mesmas 10 entradas e as mesmas 2 saídas —
+só muda a forma de aprender:
+
+| | Neuroevolução | PPO |
+|---|---|---|
+| **Quantas redes** | 100 (uma por carro) | 1, que todos os carros usam |
+| **Sinal de aprendizado** | uma nota por carro, no fim da geração | uma recompensa a cada passo: quanto o carro avançou (e uma penalidade ao bater) |
+| **Como melhora** | seleção, cruzamento e mutação | gradiente (backpropagation), com o PyTorch |
+| **Como explora** | mutações aleatórias nos pesos | sorteia cada comando em volta do que a rede sugere |
+| **Onde o carro começa** | sempre na linha de chegada | num ponto aleatório da pista (treina todos os trechos desde o início) |
+| **Tamanho da rede** | 10 · 12 · 2 (~160 pesos) | 10 · 256 · 256 · 2 (~69 mil pesos) |
+
+Em cada iteração, os 256 carros dirigem 128 passos; a rede do **crítico** estima quanta
+recompensa ainda vem pela frente, e a diferença para o que aconteceu (a *vantagem*, via GAE)
+diz se cada ação foi melhor ou pior que o esperado. A rede do **ator** então aumenta a
+probabilidade das ações boas — mas o *clip* do PPO limita quanto ela pode mudar de uma vez,
+o que deixa o treino estável.
+
+O ator termina numa tangente hiperbólica, como a rede da neuroevolução: o cérebro do PPO é
+salvo no mesmo formato (`cerebros/<pista>.ppo.npz`) e funciona em todas as telas.
+
+**E a GPU?** Para redes pequenas, a parte cara é a física dos carros (NumPy, na CPU), e a
+GPU não ajuda. Ela brilha na rede grande: com 256 × 256 neurônios, a atualização fica ~4,7×
+mais rápida que na CPU, e o treino roda a ~40 mil passos/s na RTX 5050 — na CPU, a mesma
+rede faria metade disso. Por isso o padrão é 256 × 256 na GPU e 64 × 64 na CPU.
+
+## Neuroevolução × PPO
+
+`python main.py comparar` (ou **K** no menu) avalia todos os cérebros salvos em todas as
+pistas e gera [`resultados/comparacao.md`](resultados/comparacao.md).
+`python main.py comparar --curvas --pista classica` treina as duas técnicas do zero, com o
+mesmo orçamento de experiência, e mede as curvas de aprendizado.
+
+### O que medimos (RTX 5050, outubro de 2026)
+
+![Curvas no Desafio](resultados/curvas_desafio.png)
+
+**Mesma pista, mesmo orçamento (30 h de direção simulada para cada técnica, do zero):**
+
+| | Clássica: Neuroevolução | Clássica: PPO | Desafio: Neuroevolução | Desafio: PPO |
+|---|---|---|---|---|
+| 1ª volta completa (experiência) | **0,9 h** | 3,0 h | **0,6 h** | 3,0 h |
+| 1ª volta completa (relógio) | **3 s** | 15 s | **2 s** | 16 s |
+| Voltas em 45 s, no fim | 3,07 | **3,08** | 3,15 | **3,20** |
+| Melhor volta | 14,35 s | 14,35 s | 14,03 s | **13,80 s** |
+| Tempo total de relógio | **59 s** | 146 s | **67 s** | 148 s |
+
+- A **neuroevolução larga na frente**: com 100 políticas inteiras sendo sorteadas, alguma
+  logo acerta a pista. O PPO precisa de ~3 h de experiência até "entender" a primeira volta.
+- Depois disso o **PPO aprende mais por hora de experiência** e termina um pouco melhor —
+  mas as duas chegam perto do limite da física do carro (~14 s por volta).
+- Em **tempo de relógio, a neuroevolução sai 2,2 a 2,5× mais barata**: não tem backpropagation e
+  a rede dela tem 160 pesos, contra 69 mil.
+
+**Generalização** (os cérebros de neuroevolução são os treinados por você, em 7 a 20
+gerações; os do PPO tiveram ~28 h de experiência, então não é uma disputa de igual para
+igual — para isso servem as curvas acima):
+
+- Treinados na Clássica, os dois andam bem no Oval, no Feijão e na Serpentina, que nunca
+  viram. Mas só o PPO passou no Desafio: 3,07 voltas, contra uma batida em 0,24 volta.
+  Média nas pistas inéditas: PPO 3,77 × neuroevolução 3,06 voltas.
+- **A pista de treino importa mais que a técnica**: treinados no Feijão (uma pista fácil),
+  os dois métodos batem nas pistas difíceis.
+- O **PPO generalista**, treinado nas 4 pistas ao mesmo tempo (20 milhões de passos,
+  ~7 min), dirige em cada uma delas tão bem quanto o especialista daquela pista.
+- **Ninguém passa do grampo da pista `teste01`**: depois da reta mais longa vem uma volta
+  de quase 180° muito fechada, diferente de tudo que os cérebros viram no treino.
+
+Cada número vem de uma única execução de treino, e os dois métodos usam sorteios. Rodando
+de novo, os números mudam um pouco — principalmente quando a neuroevolução acha a primeira
+volta.
+
 ## Linha de comando
 
 ```bash
 python main.py                                    # menu
-python main.py treinar --pista classica           # treino com janela
+python main.py treinar --pista classica           # neuroevolução, com janela
 python main.py treinar --pista desafio --sem-janela --geracoes 200   # bem mais rápido
 python main.py treinar --pista desafio --continuar
+python main.py ppo --pista classica               # PPO, com janela
+python main.py ppo --pista classica --sem-janela --milhoes 6
+python main.py ppo --pistas classica,desafio,feijao,serpentina --sem-janela --milhoes 20
+python main.py comparar                           # todos os cérebros em todas as pistas
+python main.py comparar --curvas --pista classica --horas 30
 python main.py assistir --pista serpentina
 python main.py correr --pista feijao
 python main.py editor --pista oval
@@ -87,8 +184,11 @@ Tudo que dá para ajustar está em [`corrida/config.py`](corrida/config.py):
 - **Sensores:** menos raios, ou alcance menor, e veja se a IA ainda consegue.
 - **Rede:** `CAMADAS_OCULTAS = (8,)` ou `(16, 8)`.
 - **Evolução:** `TAXA_MUTACAO`, `FORCA_MUTACAO`, `ELITE`, `TAMANHO_POPULACAO`.
+- **PPO:** os parâmetros ficam em `ParametrosPPO`, em [`corrida/rl/ppo.py`](corrida/rl/ppo.py);
+  na linha de comando, `--camadas 64,64` e `--carros 128`.
 
-Mudar sensores ou camadas deixa os cérebros salvos incompatíveis (é só treinar de novo).
+Cada cérebro guarda a própria arquitetura, então mudar as camadas não esconde os cérebros
+já treinados. Só mudar os sensores os deixa incompatíveis (aí é treinar de novo).
 
 ## Estrutura
 
@@ -101,11 +201,17 @@ corrida/
   rede_neural.py        a rede neural (MLP) em NumPy
   evolucao.py           o algoritmo genético
   treino.py             o laço de gerações (também roda sem janela)
+  rl/ambiente.py        o ambiente do Aprendizado por Reforço (recompensa, episódios)
+  rl/ppo.py             o PPO em PyTorch (ator-crítico, GAE, clip)
+  piloto.py             qualquer cérebro salvo pronto para dirigir
+  avaliacao.py          a avaliação justa, igual para as duas técnicas
+  comparacao.py         generalização e curvas de aprendizado
   arquivos.py           salvar/carregar cérebros e o estado do treino
-  desenho.py            desenho da pista, carros, sensores, gráfico e rede
+  desenho.py            desenho da pista, carros, sensores, gráficos e rede
   interface.py, app.py  janela, fontes, botões e painel
-  telas/                menu, treino, assistir, corrida e editor
+  telas/                menu, treino, PPO, assistir, corrida, comparação e editor
 pistas/                 as pistas (JSON: nome, largura e pontos de controle)
-cerebros/               criada no primeiro treino: <pista>.npz e <pista>.treino.npz
+cerebros/               criada no primeiro treino: <pista>.npz, .treino.npz, .ppo.npz e .ppo.pt
+resultados/             relatório e curvas da comparação
 tests/                  testes (python -m unittest discover tests)
 ```

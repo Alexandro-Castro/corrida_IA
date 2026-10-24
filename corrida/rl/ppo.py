@@ -128,7 +128,8 @@ class TreinadorPPO:
         estado = None
         if continuar and caminho_checkpoint(self.destino).exists():
             estado = torch.load(caminho_checkpoint(self.destino), map_location=self.dispositivo, weights_only=False)
-            parametros = ParametrosPPO(**{**estado["parametros"], "camadas": tuple(estado["parametros"]["camadas"])})
+            salvos = {k: v for k, v in estado["parametros"].items() if k in ParametrosPPO.__dataclass_fields__}
+            parametros = ParametrosPPO(**{**salvos, "camadas": tuple(salvos["camadas"])})
         self.p = parametros or ParametrosPPO()
         if self.p.camadas is None:
             self.p.camadas = (256, 256) if self.dispositivo.type == "cuda" else (64, 64)

@@ -58,7 +58,6 @@ def comparar_tecnicas(args):
               " (os cérebros salvos não são alterados).")
         dados = comparacao.curvas_aprendizado(pista, args.horas, args.dispositivo)
         comparacao.salvar_curvas(dados)
-        comparacao.imagem_curvas(dados, comparacao.PASTA_RESULTADOS / f"curvas_{pista.id}.png")
         print()
         print(comparacao.tabela_curvas(dados))
         print()

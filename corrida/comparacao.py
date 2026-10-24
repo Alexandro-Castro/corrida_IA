@@ -196,6 +196,7 @@ def escrever_relatorio(cerebros, pistas, resultados):
     if curvas:
         partes.append("## Curvas de aprendizado (do zero, mesmo orçamento de experiência)")
     for dados in curvas:
+        imagem_curvas(dados, PASTA_RESULTADOS / f"curvas_{dados['pista_id']}.png")
         partes += [f"### {dados['pista_nome']} — {numero(dados['horas'], 0)} h de direção para cada técnica",
                    f"![curvas](curvas_{dados['pista_id']}.png)", tabela_curvas(dados)]
     caminho = PASTA_RESULTADOS / "comparacao.md"
