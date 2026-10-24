@@ -62,6 +62,68 @@ class TestAmbiente(unittest.TestCase):
         self.assertEqual(r.shape, (16,))
 
 
+@unittest.skipUnless(TEM_TORCH, "PyTorch não instalado (pip install -r requirements-rl.txt)")
+class TestPPO(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self.pasta = tempfile.TemporaryDirectory()
+        self.original = config.PASTA_CEREBROS
+        config.PASTA_CEREBROS = Path(self.pasta.name)
+
+    def tearDown(self):
+        config.PASTA_CEREBROS = self.original
+        self.pasta.cleanup()
+
+    def pequeno(self):
+        from corrida.rl.ppo import ParametrosPPO
+        return ParametrosPPO(camadas=(16, 16), carros_por_pista=8, passos_por_coleta=32, epocas=2, minilotes=2,
+                             avaliar_a_cada=2)
+
+    def test_cerebro_exportado_dirige_igual_ao_ator(self):
+        import torch
+        from corrida.rede_neural import Rede
+        from corrida.rl.ppo import AtorCritico
+        modelo = AtorCritico(10, 2, (32, 16), -0.5)
+        for parametro in modelo.parameters():          # pesos aleatórios "de verdade", não os iniciais
+            torch.nn.init.normal_(parametro, 0, 0.5)
+        obs = np.random.default_rng(0).random((20, 10)).astype(np.float32)
+        with torch.no_grad():
+            esperado = modelo.distribuicao(torch.as_tensor(obs)).mean.numpy()
+        rede = Rede(modelo.tamanhos)
+        np.testing.assert_allclose(rede.avaliar(rede.desempacotar(modelo.genoma()), obs), esperado, atol=1e-5)
+
+    def test_treina_avalia_salva_e_continua(self):
+        from pathlib import Path
+        from corrida import arquivos
+        from corrida.rl.ppo import TreinadorPPO
+        pista = pista_oval()
+        pista.arquivo = Path("oval_teste.json")
+        t = TreinadorPPO([pista], self.pequeno(), "cpu", semente=0)
+        self.assertIsNone(t.iteracao())
+        registro = t.iteracao()                    # 2ª atualização: avaliação justa
+        self.assertEqual(t.passos, 2 * 32 * 8)
+        self.assertTrue(registro["novo_recorde"])
+        cerebro = arquivos.cerebro_da_pista(pista, "ppo")
+        self.assertEqual((cerebro.metodo, cerebro.tamanhos), ("ppo", (10, 16, 16, 2)))
+        self.assertAlmostEqual(cerebro.experiencia, t.experiencia)
+        outro = TreinadorPPO([pista], None, "cpu", continuar=True)
+        self.assertEqual((outro.passos, outro.atualizacoes, outro.p.camadas), (t.passos, 2, (16, 16)))
+        self.assertEqual(len(outro.historico), 1)
+
+    def test_varias_pistas_salva_como_varias(self):
+        from pathlib import Path
+        from corrida import arquivos
+        from corrida.rl.ppo import TreinadorPPO
+        a, b = pista_oval(), pista_oval(120)
+        a.arquivo, b.arquivo = Path("a.json"), Path("b.json")
+        t = TreinadorPPO([a, b], self.pequeno(), "cpu", semente=0)
+        t.iteracao()
+        t.iteracao()
+        nomes = [c.arquivo.name for c in arquivos.cerebros_disponiveis()]
+        self.assertEqual(nomes, ["varias.ppo.npz"])
+
+
 class TestAvaliacao(unittest.TestCase):
     def test_acelerar_reto_bate_na_primeira_curva(self):
         r = avaliar(pista_oval(), lambda e: np.array([[0.0, 1.0]]))

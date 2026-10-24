@@ -1,0 +1,5 @@
+# Aprendizado por Reforço (PPO): PyTorch com suporte a GPUs NVIDIA (CUDA 12.8, inclui a série RTX 50).
+# Sem placa NVIDIA, funciona na CPU do mesmo jeito (só a rede padrão fica menor).
+-r requirements.txt
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch>=2.7
