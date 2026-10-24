@@ -70,7 +70,8 @@ def main():
                 tela = TelaAssistir(app, pista)
             else:
                 from corrida.telas.corrida import TelaCorrida
-                tela = TelaCorrida(app, pista, arquivos.cerebro_da_pista(pista) or cerebros[0])
+                from corrida.piloto import adversarios_padrao
+                tela = TelaCorrida(app, pista, adversarios_padrao(pista))
     app.rodar(tela)
 
 

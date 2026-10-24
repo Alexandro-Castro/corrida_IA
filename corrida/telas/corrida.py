@@ -10,26 +10,22 @@ from ..app import Tela
 from ..carros import Frota
 from ..interface import (AZUL, DESTAQUE, FUNDO, LARANJA, PAINEL, ROXO, TEXTO, TEXTO_FRACO, VERDE, VERMELHO, Aviso,
                          Painel, Vista, dividir_tela, kmh, numero, tempo, texto)
-from ..rede_neural import Rede
 
 CORES_IA = (AZUL, VERDE, ROXO)
 COR_JOGADOR = VERMELHO
 
 
 class TelaCorrida(Tela):
-    def __init__(self, app, pista, cerebro=None, voltas=3, ao_voltar=None):
-        """cerebro=None e voltas=None: teste de pista (sozinho e sem fim)."""
+    def __init__(self, app, pista, adversarios=(), voltas=3, ao_voltar=None):
+        """adversarios: lista de Piloto (até 3). Sem adversários e voltas=None: teste de pista."""
         super().__init__(app)
         self.pista = pista.preparar()
-        self.cerebro = cerebro
+        self.pilotos = list(adversarios)[:len(CORES_IA)]
+        self.n_ia = len(self.pilotos)
         self.total_voltas = voltas
         self.ao_voltar = ao_voltar
         self.imagem = desenho.imagem_pista(pista).convert()
         pista.liberar_campos()
-        self.rede = Rede.padrao()
-        self.n_ia = min(3, len(cerebro.genomas)) if cerebro is not None else 0
-        if self.n_ia:
-            self.camadas = self.rede.desempacotar(cerebro.genomas[:self.n_ia])
         self.aviso = Aviso()
         self.reiniciar()
 
@@ -38,7 +34,7 @@ class TelaCorrida(Tela):
         self.jogador = n - 1                       # o jogador larga em último no grid
         self.frota = Frota(self.pista, n, modo="corrida", grade=self.n_ia > 0,
                            reposicionar_parados=np.arange(n) != self.jogador)
-        self.nomes = [f"IA {i + 1}" for i in range(self.n_ia)] + ["Você"]
+        self.nomes = [p.nome for p in self.pilotos] + ["Você"]
         self.cores = list(CORES_IA[:self.n_ia]) + [COR_JOGADOR]
         self.chegada = np.full(n, np.nan)
         self.direcao = 0.0
@@ -90,11 +86,8 @@ class TelaCorrida(Tela):
         ativos = np.flatnonzero(np.isnan(self.chegada))
         direcao = np.zeros(f.n)
         acelerador = np.zeros(f.n)
-        ia = ativos[ativos != self.jogador]
-        if ia.size:
-            saida = self.rede.avaliar(self.rede.selecionar(self.camadas, ia), f.entradas(ia))
-            direcao[ia] = saida[:, 0]
-            acelerador[ia] = saida[:, 1]
+        for i in ativos[ativos != self.jogador]:
+            direcao[i], acelerador[i] = self.pilotos[i].agir(f.entradas(np.array([i])))[0]
         teclas = pygame.key.get_pressed()
         alvo = int(teclas[pygame.K_RIGHT] or teclas[pygame.K_d]) - int(teclas[pygame.K_LEFT] or teclas[pygame.K_a])
         self.direcao += (alvo - self.direcao) * min(1.0, 12 * config.DT)

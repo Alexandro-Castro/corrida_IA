@@ -23,11 +23,16 @@ class Treinador:
         self.salvar = salvar
         self.ag = AlgoritmoGenetico(self.rede)
         self.historico_volta = []     # melhor tempo de volta de cada geração (nan = ninguém completou)
+        self.historico_experiencia = []   # experiência acumulada ao fim de cada geração (s de direção)
+        self.experiencia = 0.0        # segundos de direção simulados, somando todos os carros
         if continuar:
             estado = arquivos.carregar_treino(pista)
             if estado is not None:
                 self.ag.restaurar(estado)
                 self.historico_volta = [float(v) for v in estado["historico_volta"]]
+                if "historico_experiencia" in estado:
+                    self.historico_experiencia = [float(v) for v in estado["historico_experiencia"]]
+                    self.experiencia = self.historico_experiencia[-1] if self.historico_experiencia else 0.0
         # o cérebro salvo só é substituído por um melhor do que ele
         self.recorde = arquivos.recorde_salvo(pista) if salvar else -math.inf
         self.resumo = None            # dados da última geração concluída
@@ -52,6 +57,7 @@ class Treinador:
             return True
         saidas = self.rede.avaliar(self.rede.selecionar(self.camadas, vivos), f.entradas(vivos))
         f.passo(saidas[:, 0], saidas[:, 1], vivos)
+        self.experiencia += vivos.size * config.DT
         return False
 
     def encerrar_agora(self):
@@ -68,8 +74,9 @@ class Treinador:
             self.recorde = melhor
             if self.salvar:
                 top = ordem[:config.ELITE]
-                arquivos.salvar_cerebro(self.pista, self.ag.populacao[top], fitness[top],
-                                        self.ag.geracao, f.melhor_volta(int(ordem[0])))
+                arquivos.salvar_cerebro(self.pista, self.ag.populacao[top], fitness[top], self.ag.geracao,
+                                        f.melhor_volta(int(ordem[0])), self.rede.tamanhos,
+                                        experiencia=self.experiencia)
         self.resumo = {
             "geracao": self.ag.geracao,
             "melhor": melhor / L,
@@ -79,9 +86,10 @@ class Treinador:
             "novo_recorde": novo_recorde,
         }
         self.historico_volta.append(self.resumo["melhor_volta"])
+        self.historico_experiencia.append(self.experiencia)
         self.ag.evoluir(fitness)
         if self.salvar:
-            arquivos.salvar_treino(self.pista, self.ag, self.historico_volta)
+            arquivos.salvar_treino(self.pista, self.ag, self.historico_volta, self.historico_experiencia)
         self._nova_geracao()
 
 

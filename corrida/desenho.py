@@ -185,6 +185,9 @@ def desenhar_grafico(sup, rect, fontes, series, unidade=""):
 
 
 # --- Rede neural -------------------------------------------------------------
+MAX_CONEXOES = 300     # por camada
+
+
 def rotulos_sensores():
     return [f"{a:+d}°" if a else "0°" for a in config.ANGULOS_SENSORES] + ["vel."]
 
@@ -201,7 +204,7 @@ def desenhar_rede(sup, rect, fontes, rede, genoma, entradas):
     margem_esq = max(fontes.pequena.size(r)[0] for r in rotulos) + round(12 * e)
     margem_dir = fontes.pequena.size("acelerador")[0] + round(14 * e)
     xs = np.linspace(rect.x + margem_esq, rect.right - margem_dir, len(tamanhos))
-    raio = max(3, min(round(7 * e), round(rect.h / (max(tamanhos) * 2.6))))
+    raio = max(2, min(round(7 * e), round(rect.h / (max(tamanhos) * 2.6))))
 
     def alturas(n):
         passo = min(rect.h / n, 34 * e)
@@ -210,12 +213,13 @@ def desenhar_rede(sup, rect, fontes, rede, genoma, entradas):
     posicoes = [[(xs[k], y) for y in alturas(n)] for k, n in enumerate(tamanhos)]
 
     for k, (W, _) in enumerate(camadas):
-        a = ativacoes[k]
-        for i, origem in enumerate(posicoes[k]):
-            for j, destino in enumerate(posicoes[k + 1]):
-                sinal = W[0, i, j] * a[i]
-                cor = misturar(PAINEL_CLARO, LARANJA if sinal > 0 else AZUL, 0.12 + abs(sinal) / 2.5)
-                pygame.draw.line(sup, cor, origem, destino, 2 if abs(sinal) > 1.2 else 1)
+        sinais = W[0] * ativacoes[k][:, None]
+        # redes grandes (como as do PPO) têm milhares de conexões: desenha só as mais fortes agora
+        ordem = np.argsort(np.abs(sinais), axis=None)[-MAX_CONEXOES:]
+        for i, j in zip(*np.unravel_index(ordem, sinais.shape)):
+            sinal = sinais[i, j]
+            cor = misturar(PAINEL_CLARO, LARANJA if sinal > 0 else AZUL, 0.12 + abs(sinal) / 2.5)
+            pygame.draw.line(sup, cor, posicoes[k][i], posicoes[k + 1][j], 2 if abs(sinal) > 1.2 else 1)
 
     for k, n in enumerate(tamanhos):
         for i, (x, y) in enumerate(posicoes[k]):

@@ -69,7 +69,8 @@ class TelaMenu(Tela):
 
     def correr(self):
         from .corrida import TelaCorrida
-        self.app.ir_para(TelaCorrida(self.app, self.pista, self.algum_cerebro))
+        from ..piloto import adversarios_padrao
+        self.app.ir_para(TelaCorrida(self.app, self.pista, adversarios_padrao(self.pista)))
 
     def editar(self):
         from .editor import TelaEditor

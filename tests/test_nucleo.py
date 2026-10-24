@@ -179,19 +179,47 @@ class TestArquivos(unittest.TestCase):
         p.arquivo = Path("oval_teste.json")
         rede = Rede.padrao()
         genomas = np.random.default_rng(0).normal(size=(5, rede.n_parametros))
-        arquivos.salvar_cerebro(p, genomas, np.arange(5.0)[::-1] * 1000, 7, 12.5)
+        arquivos.salvar_cerebro(p, genomas, np.arange(5.0)[::-1] * 1000, 7, 12.5, rede.tamanhos, experiencia=90.0)
         c = arquivos.cerebro_da_pista(p)
         np.testing.assert_array_equal(c.genomas, genomas)
         self.assertEqual((c.pista_id, c.geracao, c.melhor_volta), ("oval_teste", 7, 12.5))
+        self.assertEqual((c.metodo, c.tamanhos, c.experiencia), ("neuroevolucao", rede.tamanhos, 90.0))
         self.assertEqual(arquivos.recorde_salvo(p), 4000.0)
         self.assertEqual([x.pista_id for x in arquivos.cerebros_disponiveis()], ["oval_teste"])
+
+    def test_cerebros_de_arquiteturas_e_tecnicas_diferentes_convivem(self):
+        from corrida.piloto import Piloto, adversarios_padrao
+        p = pista_oval()
+        p.arquivo = Path("oval_teste.json")
+        n_entradas = len(config.ANGULOS_SENSORES) + 1
+        pequena, grande = Rede((n_entradas, 12, 2)), Rede((n_entradas, 64, 64, 2))
+        rng = np.random.default_rng(0)
+        arquivos.salvar_cerebro(p, rng.normal(size=(5, pequena.n_parametros)), np.ones(5), 3, 10.0, pequena.tamanhos)
+        arquivos.salvar_cerebro(p, rng.normal(size=(1, grande.n_parametros)), np.ones(1), 9, 9.0, grande.tamanhos,
+                                metodo="ppo")
+        self.assertEqual(sorted(c.metodo for c in arquivos.cerebros_disponiveis()), ["neuroevolucao", "ppo"])
+        ppo = arquivos.cerebro_da_pista(p, "ppo")
+        self.assertEqual(ppo.arquivo.name, "oval_teste.ppo.npz")
+        saida = Piloto(ppo).agir(np.zeros((3, n_entradas)))
+        self.assertEqual(saida.shape, (3, 2))
+        # numa corrida, as técnicas se alternam: Neuro 1, PPO, Neuro 2
+        self.assertEqual([x.nome for x in adversarios_padrao(p)], ["Neuro 1", "PPO", "Neuro 2"])
+
+    def test_cerebro_com_outros_sensores_e_recusado(self):
+        caminho = Path(self.pasta.name) / "estranho.npz"
+        np.savez(caminho, genomas=np.zeros((1, 10)), fitness=np.ones(1), geracao=1, tamanhos=np.array([4, 2]),
+                 angulos=np.array([0.0, 45.0, 90.0]), pista_id=np.array("x"), pista_nome=np.array("x"),
+                 comprimento=100.0, melhor_volta=1.0)
+        with self.assertRaises(arquivos.CerebroIncompativel):
+            arquivos.carregar_cerebro(caminho)
+        self.assertEqual(arquivos.cerebros_disponiveis(), [])
 
     def test_treino_ida_e_volta(self):
         p = pista_oval()
         p.arquivo = Path("oval_teste.json")
         ag = AlgoritmoGenetico(Rede.padrao(), tamanho=10, semente=0)
         ag.evoluir(np.arange(10.0))
-        arquivos.salvar_treino(p, ag, [float("nan")])
+        arquivos.salvar_treino(p, ag, [float("nan")], [12.0])
         outro = AlgoritmoGenetico(Rede.padrao(), tamanho=10, semente=1)
         outro.restaurar(arquivos.carregar_treino(p))
         np.testing.assert_array_equal(outro.populacao, ag.populacao)

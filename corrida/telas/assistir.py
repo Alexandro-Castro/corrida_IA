@@ -9,17 +9,19 @@ from ..carros import Frota
 from ..interface import (DESTAQUE, FUNDO, LARANJA, TEXTO, VERDE, Aviso, Painel, Vista, dividir_tela, kmh, numero,
                          tempo, texto)
 from ..pista import Pista
-from ..rede_neural import Rede
+from ..piloto import Piloto
 
 VELOCIDADES = (1, 2, 4, 8)
 
 
 class TelaAssistir(Tela):
-    def __init__(self, app, pista, ao_voltar=None):
+    def __init__(self, app, pista, ao_voltar=None, metodo=None):
+        """Começa pelo cérebro desta pista (da técnica `metodo`, se houver mais de um)."""
         super().__init__(app)
         self.ao_voltar = ao_voltar
-        self.rede = Rede.padrao()
         self.cerebros = arquivos.cerebros_disponiveis()
+        if metodo is not None:
+            self.cerebros.sort(key=lambda c: c.metodo != metodo)
         ids = [c.pista_id for c in self.cerebros]
         self.arquivos_pista = Pista.listar()
         caminhos = [c.resolve() for c in self.arquivos_pista]
@@ -44,7 +46,7 @@ class TelaAssistir(Tela):
     def _usar_cerebro(self, indice):
         self.i_cerebro = indice % len(self.cerebros)
         self.cerebro = self.cerebros[self.i_cerebro]
-        self.camadas = self.rede.desempacotar(self.cerebro.genomas[:1])
+        self.piloto = Piloto(self.cerebro)
         self._reiniciar()
 
     def _reiniciar(self):
@@ -87,7 +89,7 @@ class TelaAssistir(Tela):
             self._trocar_pista(1)
         elif k == pygame.K_b:
             self._usar_cerebro(self.i_cerebro + 1)
-            self.aviso.mostrar(f"Cérebro treinado na pista {self.cerebro.pista_nome}", 2)
+            self.aviso.mostrar(f"Cérebro: {self.cerebro.descricao}", 2)
         elif k in (pygame.K_UP, pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
             self.i_vel = min(self.i_vel + 1, len(VELOCIDADES) - 1)
         elif k in (pygame.K_DOWN, pygame.K_MINUS, pygame.K_KP_MINUS):
@@ -102,7 +104,7 @@ class TelaAssistir(Tela):
             return
         f = self.frota
         for _ in range(VELOCIDADES[self.i_vel]):
-            saida = self.rede.avaliar(self.camadas, f.entradas(np.array([0])))
+            saida = self.piloto.agir(f.entradas(np.array([0])))
             f.passo(saida[:, 0], saida[:, 1])
             self.rastro.append((f.x[0], f.y[0]))
         del self.rastro[:-240]
@@ -137,8 +139,14 @@ class TelaAssistir(Tela):
                         ("↑ ↓", "velocidade"), ("S", "mostrar sensores"), ("R", "recomeçar"),
                         ("Esc", "voltar")])
         p.titulo("Assistir a IA", self.pista.nome)
-        p.linha("Cérebro de", self.cerebro.pista_nome)
-        p.linha("Treinado até", f"geração {self.cerebro.geracao}")
+        c = self.cerebro
+        p.linha("Técnica", c.nome_metodo, DESTAQUE)
+        p.linha("Treinado na pista", c.pista_nome)
+        p.linha("Rede", " · ".join(str(t) for t in c.tamanhos))
+        if c.metodo == "ppo":
+            p.linha("Experiência", f"{numero(c.experiencia / 3600, 1)} h de direção")
+        else:
+            p.linha("Treinado até", f"geração {c.geracao}")
         if self.pista.id != self.cerebro.pista_id:
             p.paragrafo("Pista inédita para este cérebro: é um teste de generalização!", LARANJA)
         p.secao("Volta")
@@ -152,4 +160,4 @@ class TelaAssistir(Tela):
         p.secao("Rede neural")
         area = p.area(fim - p.y)
         if area.h > 70 * e:
-            desenho.desenhar_rede(sup, area, fontes, self.rede, self.cerebro.genomas[0], f.entradas(np.array([0]))[0])
+            desenho.desenhar_rede(sup, area, fontes, self.piloto.rede, self.piloto.genoma, f.entradas(np.array([0]))[0])
