@@ -214,7 +214,8 @@ def desenhar_curvas(sup, rect, fontes, series, rotulo_x, rotulo_y, vazio="sem da
         y = area.bottom - frac * area.h
         pygame.draw.line(sup, LINHA, (area.x, y), (area.right, y), 1)
         valor = y_max * frac
-        texto(sup, numero(valor, 1 if valor % 1 else 0), fontes.pequena, TEXTO_FRACO, (area.x - 6 * e, y), "midright")
+        casas = next(c for c in (0, 1, 2) if abs(valor * 10 ** c - round(valor * 10 ** c)) < 1e-9 or c == 2)
+        texto(sup, numero(valor, casas), fontes.pequena, TEXTO_FRACO, (area.x - 6 * e, y), "midright")
     texto(sup, rotulo_y, fontes.pequena, TEXTO_FRACO, (area.x, rect.y + pad))
     texto(sup, "0", fontes.pequena, TEXTO_FRACO, (area.x, area.bottom + 2 * e), "midtop")
     texto(sup, f"{numero(x_max, 1 if x_max % 1 else 0)} {rotulo_x}", fontes.pequena, TEXTO_FRACO,

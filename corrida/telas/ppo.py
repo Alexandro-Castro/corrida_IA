@@ -226,7 +226,7 @@ class TelaPPO(Tela):
         area = p.area(150 * e)
         series = [([h["experiencia"] / 3600 for h in t.historico], [h["voltas"] for h in t.historico], DESTAQUE, "PPO")]
         if self.curva_ne[0]:
-            series.append((*self.curva_ne, LARANJA, "neuroevolução"))
+            series.append((*self.curva_ne, VERDE, "neuroevolução"))
         desenho.desenhar_curvas(sup, area, fontes, series, "h de direção", "voltas em 45 s",
                                 vazio="a 1ª avaliação sai em alguns segundos")
         p.secao("Rede do carro de teste")

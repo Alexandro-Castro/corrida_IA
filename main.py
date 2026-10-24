@@ -49,6 +49,30 @@ def parametros_ppo(args, ppo):
     return p
 
 
+def comparar_tecnicas(args):
+    from corrida import comparacao
+    if args.curvas:
+        importar_ppo()
+        pista = carregar_pista(args.pista)
+        print(f"Curvas de aprendizado em '{pista.nome}': {args.horas:g} h de direção para cada técnica, do zero"
+              " (os cérebros salvos não são alterados).")
+        dados = comparacao.curvas_aprendizado(pista, args.horas, args.dispositivo)
+        comparacao.salvar_curvas(dados)
+        comparacao.imagem_curvas(dados, comparacao.PASTA_RESULTADOS / f"curvas_{pista.id}.png")
+        print()
+        print(comparacao.tabela_curvas(dados))
+        print()
+    print("Avaliando todos os cérebros salvos em todas as pistas...")
+    cerebros, pistas, resultados = comparacao.matriz_generalizacao(
+        ao_avancar=lambda k, n: print(f"  pista {k} de {n}", end="\r"))
+    if not cerebros:
+        sys.exit("Ainda não há cérebros treinados para comparar.")
+    print()
+    print(comparacao.tabela_generalizacao(cerebros, pistas, resultados))
+    caminho = comparacao.escrever_relatorio(cerebros, pistas, resultados)
+    print(f"\nRelatório salvo em {caminho.relative_to(config.RAIZ)}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Redes neurais aprendendo a pilotar numa pista de corrida.")
     sub = parser.add_subparsers(dest="modo")
@@ -68,10 +92,21 @@ def main():
     ppo.add_argument("--camadas", help="camadas ocultas, ex.: 256,256 (padrão: 256,256 na GPU e 64,64 na CPU)")
     ppo.add_argument("--carros", type=int, help="carros em paralelo, divididos entre as pistas (padrão: 256)")
 
+    comparar = sub.add_parser("comparar", help="comparar neuroevolução e PPO (gera resultados/comparacao.md)")
+    comparar.add_argument("--curvas", action="store_true",
+                          help="treinar as duas técnicas do zero, com o mesmo orçamento, e comparar as curvas")
+    comparar.add_argument("--pista", default="classica", help="pista das curvas de aprendizado")
+    comparar.add_argument("--horas", type=float, default=30, help="horas de direção simulada para cada técnica")
+    comparar.add_argument("--dispositivo", default="auto", choices=("auto", "cuda", "cpu"))
+
     for nome, ajuda in (("assistir", "ver a IA treinada dirigindo"), ("correr", "correr contra a IA"),
                         ("editor", "editor de pistas")):
         sub.add_parser(nome, help=ajuda).add_argument("--pista", help="nome do arquivo da pista, sem .json")
     args = parser.parse_args()
+
+    if args.modo == "comparar":
+        comparar_tecnicas(args)
+        return
 
     if args.modo == "treinar" and args.sem_janela:
         from corrida.treino import treinar_sem_janela

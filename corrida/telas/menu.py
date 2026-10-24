@@ -26,12 +26,13 @@ class TelaMenu(Tela):
             Botao("Treinar com PPO", self.treinar_ppo, "P"),
             Botao("Assistir a IA", self.assistir, "A"),
             Botao("Correr contra a IA", self.correr, "J"),
+            Botao("Comparar as técnicas", self.comparar, "K"),
             Botao("Editar esta pista", self.editar, "E"),
             Botao("Criar nova pista", self.nova_pista, "N"),
             Botao("Sair", app.sair, "Esc"),
         ]
-        self.atalhos = dict(zip((pygame.K_t, pygame.K_c, pygame.K_p, pygame.K_a, pygame.K_j, pygame.K_e, pygame.K_n),
-                                self.botoes))
+        self.atalhos = dict(zip((pygame.K_t, pygame.K_c, pygame.K_p, pygame.K_a, pygame.K_j, pygame.K_k, pygame.K_e,
+                                 pygame.K_n), self.botoes))
         self.seta_esq = self.seta_dir = self.cartao = self.rect_miniatura = pygame.Rect(0, 0, 0, 0)
         self._selecionar(ids.index(pista_id) if pista_id in ids else 0)
 
@@ -54,7 +55,8 @@ class TelaMenu(Tela):
         self.botoes[2].rotulo = ("PPO (instale o PyTorch)" if not self.tem_torch
                                  else "Continuar PPO" if self.ppo_salvo else "Treinar com PPO")
         self.botoes[3].ativo = self.botoes[4].ativo = tem_pista and self.algum_cerebro is not None
-        self.botoes[5].ativo = tem_pista
+        self.botoes[5].ativo = self.algum_cerebro is not None
+        self.botoes[6].ativo = tem_pista
         self.confirmar_ate = 0
 
     # ------------------------------------------------------------------ ações
@@ -84,6 +86,10 @@ class TelaMenu(Tela):
         from .corrida import TelaCorrida
         from ..piloto import adversarios_padrao
         self.app.ir_para(TelaCorrida(self.app, self.pista, adversarios_padrao(self.pista)))
+
+    def comparar(self):
+        from .comparacao import TelaComparacao
+        self.app.ir_para(TelaComparacao(self.app, self.pista.id if self.pista else None))
 
     def editar(self):
         from .editor import TelaEditor
