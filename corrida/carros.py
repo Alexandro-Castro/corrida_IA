@@ -58,6 +58,28 @@ class Frota:
         self.distancias = np.full((n, len(self.angulos_sensores)), config.ALCANCE_SENSOR)
         self._ler_sensores(indices)
 
+    def recolocar(self, idx, s, lateral=0.0, desvio=0.0, velocidade=0.0):
+        """Recomeça os carros `idx` na posição s da pista — com um deslocamento lateral, um desvio
+        no ângulo e uma velocidade inicial — e zera o progresso deles. No PPO cada carro é um
+        episódio independente, que recomeça em qualquer ponto da pista quando termina."""
+        x, y, ang = self.pista.ponto_em(s)
+        self.x[idx] = x - np.sin(ang) * lateral
+        self.y[idx] = y + np.cos(ang) * lateral
+        self.angulo[idx] = ang + desvio
+        self.velocidade[idx] = velocidade
+        self.direcao[idx] = 0.0
+        self.acelerador[idx] = 0.0
+        self.vivo[idx] = True
+        self.s[idx] = self.pista.projetar(self.x[idx], self.y[idx])
+        self.progresso[idx] = 0.0
+        self.melhor_progresso[idx] = 0.0
+        self.sem_avanco[idx] = 0.0
+        self.voltas[idx] = 0
+        self.inicio_volta[idx] = self.tempo
+        for i in idx:
+            self.tempos_volta[i] = []
+        self._ler_sensores(idx)
+
     # ------------------------------------------------------------------ passo
     def passo(self, direcao, acelerador, idx=None):
         """Avança a física um passo de tempo para os carros `idx` (padrão: todos os vivos),
