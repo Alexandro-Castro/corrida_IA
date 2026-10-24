@@ -38,15 +38,17 @@ from .ambiente import AmbienteCorrida
 class ParametrosPPO:
     camadas: tuple = None            # camadas ocultas do ator e do crítico; None = (256, 256) na
                                      # GPU e (64, 64) na CPU (na CPU a rede grande fica 2× mais lenta)
-    carros_por_pista: int = 64       # carros dirigindo em paralelo em cada pista
+    carros: int = 256                # carros dirigindo em paralelo (divididos entre as pistas);
+                                     # lotes maiores deixam o treino mais estável e aproveitam a GPU
     passos_por_coleta: int = 128     # passos de cada carro entre duas atualizações
     epocas: int = 10                 # quantas vezes cada coleta é usada na atualização
     minilotes: int = 8
-    taxa_aprendizado: float = 3e-4
+    taxa_aprendizado: float = 3e-4   # cai em linha reta até 10% disso ao longo de `passos_planejados`
+    passos_planejados: int = 10_000_000
     gamma: float = 0.99              # desconto: quanto o futuro vale (0,99 ≈ olhar ~1,7 s à frente)
     lambda_gae: float = 0.95
     clip: float = 0.2                # quanto a política pode mudar por atualização
-    kl_alvo: float = 0.03            # para a atualização mais cedo se a política mudar demais
+    kl_alvo: float = 0.02            # para a atualização mais cedo se a política mudar demais
     coef_valor: float = 0.5
     coef_entropia: float = 0.0
     max_norma_gradiente: float = 0.5
@@ -112,7 +114,7 @@ def destino_do_treino(pistas):
 
 
 def caminho_checkpoint(destino):
-    return config.PASTA_CEREBROS / f"{destino.id}.ppo.pt"
+    return arquivos.caminho_treino_ppo(destino.id)
 
 
 class TreinadorPPO:
@@ -131,7 +133,8 @@ class TreinadorPPO:
         if self.p.camadas is None:
             self.p.camadas = (256, 256) if self.dispositivo.type == "cuda" else (64, 64)
 
-        self.ambiente = AmbienteCorrida(self.pistas, self.p.carros_por_pista, self.p.largada_aleatoria, semente=semente)
+        carros_por_pista = max(8, self.p.carros // len(self.pistas))
+        self.ambiente = AmbienteCorrida(self.pistas, carros_por_pista, self.p.largada_aleatoria, semente=semente)
         self.modelo = AtorCritico(self.ambiente.n_observacoes, 2, self.p.camadas, self.p.log_std_inicial)
         self.modelo.to(self.dispositivo)
         self.otimizador = torch.optim.Adam(self.modelo.parameters(), lr=self.p.taxa_aprendizado, eps=1e-5)
@@ -141,6 +144,11 @@ class TreinadorPPO:
         self.recorde = -math.inf        # média de voltas da melhor avaliação
         self.ultima = {}                # estatísticas da última atualização
         self.tempo_treino = 0.0         # segundos de relógio gastos treinando
+        if estado is None and salvar:
+            # um treino novo só substitui o cérebro salvo se fizer melhor do que ele
+            salvo = arquivos.cerebro_da_pista(self.destino, "ppo")
+            if salvo is not None and abs(salvo.comprimento_pista - self.destino.comprimento) <= 1.0:
+                self.recorde = salvo.voltas
         if estado is not None:
             self.modelo.load_state_dict(estado["modelo"])
             self.otimizador.load_state_dict(estado["otimizador"])
@@ -227,6 +235,10 @@ class TreinadorPPO:
 
     def _atualizar(self, lote):
         p = self.p
+        # passos largos no começo, passos finos no fim: evita desaprender o que já sabe
+        fracao = max(0.1, 1.0 - self.passos / p.passos_planejados)
+        for grupo in self.otimizador.param_groups:
+            grupo["lr"] = p.taxa_aprendizado * fracao
         total = lote["obs"].shape[0]
         tamanho = total // p.minilotes
         kls, perdas_valor, entropias = [], [], []
@@ -294,7 +306,7 @@ class TreinadorPPO:
 def treinar_ppo_sem_janela(pistas, milhoes_de_passos, parametros=None, dispositivo="auto", continuar=False):
     """Treina sem desenhar nada e mostra o progresso no terminal."""
     treinador = TreinadorPPO(pistas, parametros, dispositivo, continuar)
-    p = treinador.p
+    treinador.p.passos_planejados = treinador.passos + int(milhoes_de_passos * 1_000_000)
     nomes = ", ".join(pista.nome for pista in treinador.pistas)
     print(f"PPO em {nomes} | {treinador.ambiente.n} carros em paralelo | rede {treinador.modelo.tamanhos}"
           f" | {treinador.dispositivo.type.upper()}"

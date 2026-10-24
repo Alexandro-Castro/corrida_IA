@@ -68,6 +68,10 @@ def caminho_treino(pista_id):
     return config.PASTA_CEREBROS / f"{pista_id}.treino.npz"
 
 
+def caminho_treino_ppo(pista_id):
+    return config.PASTA_CEREBROS / f"{pista_id}.ppo.pt"
+
+
 def _gravar(caminho, **dados):
     """Grava num arquivo temporário e troca no fim: um arquivo nunca fica pela metade."""
     caminho.parent.mkdir(parents=True, exist_ok=True)

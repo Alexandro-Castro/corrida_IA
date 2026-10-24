@@ -24,6 +24,9 @@ class Tela:
     def desenhar(self, sup):
         pass
 
+    def ao_fechar(self):
+        """Chamado quando a janela é fechada nesta tela (para salvar o que estiver em andamento)."""
+
 
 class App:
     def __init__(self, tamanho=None):
@@ -58,6 +61,7 @@ class App:
             dt = min(self.relogio.tick(60) / 1000, 0.1)
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
+                    self.tela.ao_fechar()
                     self.rodando = False
                 elif ev.type == pygame.WINDOWSIZECHANGED:
                     self.janela = pygame.display.get_surface()

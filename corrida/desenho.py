@@ -184,8 +184,56 @@ def desenhar_grafico(sup, rect, fontes, series, unidade=""):
             pygame.draw.lines(sup, cor, False, pontos, max(2, round(2 * e)))
 
 
+def _teto(valor):
+    """Um limite "redondo" para o eixo: 0,5 · 1 · 2 · 2,5 · 5 · 10 · 20 ..."""
+    if valor <= 0:
+        return 1.0
+    potencia = 10 ** math.floor(math.log10(valor))
+    for passo in (1, 2, 2.5, 5, 10):
+        if valor <= passo * potencia:
+            return passo * potencia
+    return 10 * potencia
+
+
+def desenhar_curvas(sup, rect, fontes, series, rotulo_x, rotulo_y, vazio="sem dados ainda"):
+    """Gráfico X-Y. series: lista de (xs, ys, cor, legenda) — cada série com seus próprios x."""
+    e = fontes.escala
+    pygame.draw.rect(sup, PAINEL_CLARO, rect, border_radius=round(8 * e))
+    series = [s for s in series if len(s[0])]
+    if not series:
+        texto(sup, vazio, fontes.pequena, TEXTO_FRACO, rect.center, "center")
+        return
+    x_max = _teto(max(max(xs) for xs, *_ in series))
+    y_max = _teto(max(max(ys) for _, ys, *_ in series) * 1.05)
+    linha = fontes.pequena.get_linesize()
+    pad = round(10 * e)
+    largura_eixo = fontes.pequena.size(numero(y_max, 1))[0] + round(6 * e)
+    area = pygame.Rect(rect.x + pad + largura_eixo, rect.y + pad + linha,
+                       rect.w - 2 * pad - largura_eixo, rect.h - 2 * pad - 2 * linha)
+    for frac in (0.0, 0.5, 1.0):
+        y = area.bottom - frac * area.h
+        pygame.draw.line(sup, LINHA, (area.x, y), (area.right, y), 1)
+        valor = y_max * frac
+        texto(sup, numero(valor, 1 if valor % 1 else 0), fontes.pequena, TEXTO_FRACO, (area.x - 6 * e, y), "midright")
+    texto(sup, rotulo_y, fontes.pequena, TEXTO_FRACO, (area.x, rect.y + pad))
+    texto(sup, "0", fontes.pequena, TEXTO_FRACO, (area.x, area.bottom + 2 * e), "midtop")
+    texto(sup, f"{numero(x_max, 1 if x_max % 1 else 0)} {rotulo_x}", fontes.pequena, TEXTO_FRACO,
+          (area.right, area.bottom + 2 * e), "topright")
+    legenda_x = area.right
+    for xs, ys, cor, legenda in reversed(series):
+        r = texto(sup, legenda, fontes.pequena, cor, (legenda_x, rect.y + pad), "topright")
+        legenda_x = r.x - round(12 * e)
+        pontos = [(area.x + min(x / x_max, 1.0) * area.w, area.bottom - min(max(y, 0) / y_max, 1.0) * area.h)
+                  for x, y in zip(xs, ys)]
+        if len(pontos) == 1:
+            pygame.draw.circle(sup, cor, pontos[0], round(3 * e))
+        else:
+            pygame.draw.lines(sup, cor, False, pontos, max(2, round(2 * e)))
+
+
 # --- Rede neural -------------------------------------------------------------
 MAX_CONEXOES = 300     # por camada
+MAX_NEURONIOS = 24     # por camada oculta
 
 
 def rotulos_sensores():
@@ -204,25 +252,33 @@ def desenhar_rede(sup, rect, fontes, rede, genoma, entradas):
     margem_esq = max(fontes.pequena.size(r)[0] for r in rotulos) + round(12 * e)
     margem_dir = fontes.pequena.size("acelerador")[0] + round(14 * e)
     xs = np.linspace(rect.x + margem_esq, rect.right - margem_dir, len(tamanhos))
-    raio = max(2, min(round(7 * e), round(rect.h / (max(tamanhos) * 2.6))))
+    # camadas grandes (como as 256 do PPO) não cabem: mostra uma amostra fixa de neurônios
+    visiveis = [np.arange(n) if n <= MAX_NEURONIOS else np.linspace(0, n - 1, MAX_NEURONIOS).round().astype(int)
+                for n in tamanhos]
+    amostradas = [(len(v), n) for v, n in zip(visiveis, tamanhos) if len(v) < n]
+    if amostradas:
+        texto(sup, f"mostrando {amostradas[0][0]} de {amostradas[0][1]} neurônios por camada oculta",
+              fontes.pequena, TEXTO_FRACO, (rect.centerx, rect.bottom), "midbottom")
+        rect = rect.inflate(0, -2 * fontes.pequena.get_linesize()).move(0, -fontes.pequena.get_linesize())
+    raio = max(2, min(round(7 * e), round(rect.h / (max(len(v) for v in visiveis) * 2.6))))
 
     def alturas(n):
         passo = min(rect.h / n, 34 * e)
         return [rect.centery + (i - (n - 1) / 2) * passo for i in range(n)]
 
-    posicoes = [[(xs[k], y) for y in alturas(n)] for k, n in enumerate(tamanhos)]
+    posicoes = [[(xs[k], y) for y in alturas(len(v))] for k, v in enumerate(visiveis)]
 
     for k, (W, _) in enumerate(camadas):
-        sinais = W[0] * ativacoes[k][:, None]
-        # redes grandes (como as do PPO) têm milhares de conexões: desenha só as mais fortes agora
+        sinais = (W[0] * ativacoes[k][:, None])[np.ix_(visiveis[k], visiveis[k + 1])]
+        # com muitas conexões, desenha só as mais fortes neste instante
         ordem = np.argsort(np.abs(sinais), axis=None)[-MAX_CONEXOES:]
         for i, j in zip(*np.unravel_index(ordem, sinais.shape)):
             sinal = sinais[i, j]
             cor = misturar(PAINEL_CLARO, LARANJA if sinal > 0 else AZUL, 0.12 + abs(sinal) / 2.5)
             pygame.draw.line(sup, cor, posicoes[k][i], posicoes[k + 1][j], 2 if abs(sinal) > 1.2 else 1)
 
-    for k, n in enumerate(tamanhos):
-        for i, (x, y) in enumerate(posicoes[k]):
+    for k, v in enumerate(visiveis):
+        for (x, y), i in zip(posicoes[k], v):
             a = ativacoes[k][i]
             cor = misturar((72, 76, 86), LARANJA if a > 0 else AZUL, abs(a))
             pygame.gfxdraw.filled_circle(sup, round(x), round(y), raio, cor)

@@ -77,7 +77,7 @@ class TestPPO(unittest.TestCase):
 
     def pequeno(self):
         from corrida.rl.ppo import ParametrosPPO
-        return ParametrosPPO(camadas=(16, 16), carros_por_pista=8, passos_por_coleta=32, epocas=2, minilotes=2,
+        return ParametrosPPO(camadas=(16, 16), carros=8, passos_por_coleta=32, epocas=2, minilotes=2,
                              avaliar_a_cada=2)
 
     def test_cerebro_exportado_dirige_igual_ao_ator(self):

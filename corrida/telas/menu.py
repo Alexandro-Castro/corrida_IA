@@ -1,5 +1,7 @@
 """Menu principal: escolha a pista e o que fazer com ela."""
 
+import importlib.util
+
 import pygame
 
 from .. import arquivos, config, desenho
@@ -17,16 +19,18 @@ class TelaMenu(Tela):
         self.aviso = Aviso()
         self.miniaturas = {}
         self.confirmar_ate = 0
+        self.tem_torch = importlib.util.find_spec("torch") is not None
         self.botoes = [
-            Botao("Treinar do zero", self.treinar, "T"),
-            Botao("Continuar treino", self.continuar, "C"),
+            Botao("Neuroevolução do zero", self.treinar, "T"),
+            Botao("Continuar neuroevolução", self.continuar, "C"),
+            Botao("Treinar com PPO", self.treinar_ppo, "P"),
             Botao("Assistir a IA", self.assistir, "A"),
             Botao("Correr contra a IA", self.correr, "J"),
             Botao("Editar esta pista", self.editar, "E"),
             Botao("Criar nova pista", self.nova_pista, "N"),
             Botao("Sair", app.sair, "Esc"),
         ]
-        self.atalhos = dict(zip((pygame.K_t, pygame.K_c, pygame.K_a, pygame.K_j, pygame.K_e, pygame.K_n),
+        self.atalhos = dict(zip((pygame.K_t, pygame.K_c, pygame.K_p, pygame.K_a, pygame.K_j, pygame.K_e, pygame.K_n),
                                 self.botoes))
         self.seta_esq = self.seta_dir = self.cartao = self.rect_miniatura = pygame.Rect(0, 0, 0, 0)
         self._selecionar(ids.index(pista_id) if pista_id in ids else 0)
@@ -39,13 +43,18 @@ class TelaMenu(Tela):
             self.indice = indice % len(self.arquivos)
             self.pista = Pista.carregar(self.arquivos[self.indice])
         self.cerebro = arquivos.cerebro_da_pista(self.pista) if self.pista else None
+        self.cerebro_ppo = arquivos.cerebro_da_pista(self.pista, "ppo") if self.pista else None
         self.geracao_salva = arquivos.geracao_do_treino(self.pista) if self.pista else None
-        self.algum_cerebro = self.cerebro or next(iter(arquivos.cerebros_disponiveis()), None)
+        self.ppo_salvo = self.pista is not None and arquivos.caminho_treino_ppo(self.pista.id).exists()
+        self.algum_cerebro = self.cerebro or self.cerebro_ppo or next(iter(arquivos.cerebros_disponiveis()), None)
         tem_pista = self.pista is not None
         self.botoes[0].ativo = tem_pista
         self.botoes[1].ativo = self.geracao_salva is not None
-        self.botoes[2].ativo = self.botoes[3].ativo = tem_pista and self.algum_cerebro is not None
-        self.botoes[4].ativo = tem_pista
+        self.botoes[2].ativo = tem_pista and self.tem_torch
+        self.botoes[2].rotulo = ("PPO (instale o PyTorch)" if not self.tem_torch
+                                 else "Continuar PPO" if self.ppo_salvo else "Treinar com PPO")
+        self.botoes[3].ativo = self.botoes[4].ativo = tem_pista and self.algum_cerebro is not None
+        self.botoes[5].ativo = tem_pista
         self.confirmar_ate = 0
 
     # ------------------------------------------------------------------ ações
@@ -62,6 +71,10 @@ class TelaMenu(Tela):
     def continuar(self):
         from .treino import TelaTreino
         self.app.ir_para(TelaTreino(self.app, self.pista, continuar=True))
+
+    def treinar_ppo(self):
+        from .ppo import TelaPPO
+        self.app.ir_para(TelaPPO(self.app, [self.pista], continuar=True))
 
     def assistir(self):
         from .assistir import TelaAssistir
@@ -140,7 +153,7 @@ class TelaMenu(Tela):
         sup.fill(FUNDO)
         m = round(40 * e)
         r = texto(sup, "CORRIDA IA", f.enorme, DESTAQUE, (m, round(14 * e)))
-        subtitulo = "redes neurais aprendendo a pilotar por neuroevolução"
+        subtitulo = "redes neurais aprendendo a pilotar: neuroevolução × aprendizado por reforço"
         if r.right + round(28 * e) + f.subtitulo.size(subtitulo)[0] < sup.get_width() - m:
             texto(sup, subtitulo, f.subtitulo, TEXTO_FRACO, (r.right + round(28 * e), r.bottom - round(22 * e)),
                   "bottomleft")
@@ -161,22 +174,18 @@ class TelaMenu(Tela):
             p = self.pista
             texto(sup, f"Comprimento: {numero(p.comprimento / 10, 0)} m    ·    largura: {numero(p.largura / 10, 1)} m",
                   f.normal, TEXTO_FRACO, (c.x + pad, y))
-            y += f.normal.get_linesize() + round(4 * e)
-            if self.cerebro is not None:
-                cb = self.cerebro
-                texto(sup, f"Cérebro treinado (geração {cb.geracao}): {numero(cb.voltas)} voltas em "
-                           f"{numero(config.TEMPO_MAX_GERACAO, 0)} s  ·  melhor volta {tempo(cb.melhor_volta)}",
-                      f.negrito, VERDE, (c.x + pad, y))
-            elif self.algum_cerebro is not None:
-                texto(sup, "Ainda sem cérebro treinado aqui — dá para assistir ou correr com o de outra pista.",
-                      f.normal, TEXTO_FRACO, (c.x + pad, y))
-            else:
-                texto(sup, "Nenhum cérebro treinado ainda: comece por \"Treinar do zero\".", f.normal, TEXTO_FRACO,
-                      (c.x + pad, y))
-            if self.geracao_salva is not None:
-                y += f.normal.get_linesize() + round(2 * e)
-                texto(sup, f"Treino salvo: pronto para continuar da geração {self.geracao_salva}.", f.normal,
-                      TEXTO_FRACO, (c.x + pad, y))
+            segundos = numero(config.TEMPO_MAX_GERACAO, 0)
+            for cerebro, nome, cor, detalhe in (
+                    (self.cerebro, "Neuroevolução", VERDE,
+                     lambda cb: f"geração {cb.geracao}"),
+                    (self.cerebro_ppo, "PPO", DESTAQUE,
+                     lambda cb: f"{numero(cb.experiencia / 3600, 1)} h de direção")):
+                y += f.normal.get_linesize() + round(4 * e)
+                if cerebro is None:
+                    texto(sup, f"{nome}: ainda não treinado nesta pista", f.normal, TEXTO_FRACO, (c.x + pad, y))
+                else:
+                    texto(sup, f"{nome} ({detalhe(cerebro)}): {numero(cerebro.voltas)} voltas em {segundos} s  ·  "
+                               f"melhor volta {tempo(cerebro.melhor_volta)}", f.negrito, cor, (c.x + pad, y))
 
         mouse = pygame.mouse.get_pos()
         for botao in self.botoes:
