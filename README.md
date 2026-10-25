@@ -91,7 +91,7 @@ só muda a forma de aprender:
 | | Neuroevolução | PPO |
 |---|---|---|
 | **Quantas redes** | 100 (uma por carro) | 1, que todos os carros usam |
-| **Sinal de aprendizado** | uma nota por carro, no fim da geração | uma recompensa a cada passo: quanto o carro avançou (e uma penalidade ao bater) |
+| **Sinal de aprendizado** | uma nota por carro, no fim da geração | uma recompensa a cada passo: quanto o carro avançou (bater encerra o episódio) |
 | **Como melhora** | seleção, cruzamento e mutação | gradiente (backpropagation), com o PyTorch |
 | **Como explora** | mutações aleatórias nos pesos | sorteia cada comando em volta do que a rede sugere |
 | **Onde o carro começa** | sempre na linha de chegada | num ponto aleatório da pista (treina todos os trechos desde o início) |
@@ -120,38 +120,47 @@ mesmo orçamento de experiência, e mede as curvas de aprendizado.
 
 ### O que medimos (RTX 5050, outubro de 2026)
 
-![Curvas no Desafio](resultados/curvas_desafio.png)
+![Curvas na teste01](resultados/curvas_teste01.png)
 
 **Mesma pista, mesmo orçamento (30 h de direção simulada para cada técnica, do zero):**
 
-| | Clássica: Neuroevolução | Clássica: PPO | Desafio: Neuroevolução | Desafio: PPO |
-|---|---|---|---|---|
-| 1ª volta completa (experiência) | **0,9 h** | 3,0 h | **0,6 h** | 3,0 h |
-| 1ª volta completa (relógio) | **3 s** | 15 s | **2 s** | 16 s |
-| Voltas em 45 s, no fim | 3,07 | **3,08** | 3,15 | **3,20** |
-| Melhor volta | 14,35 s | 14,35 s | 14,03 s | **13,80 s** |
-| Tempo total de relógio | **59 s** | 146 s | **67 s** | 148 s |
+| | Clássica: Neuro | Clássica: PPO | Desafio: Neuro | Desafio: PPO | teste01: Neuro | teste01: PPO |
+|---|---|---|---|---|---|---|
+| 1ª volta completa (experiência) | **1,3 h** | 3,0 h | **1,1 h** | 3,0 h | **2,5 h** | 5,3 h |
+| 1ª volta completa (relógio) | **6 s** | 16 s | **4 s** | 19 s | **9 s** | 28 s |
+| Voltas em 45 s, no fim | 3,11 | **3,13** | 3,11 | **3,15** | 2,52 | **2,70** |
+| Melhor volta | 14,17 s | **14,12 s** | 14,17 s | **13,98 s** | 17,67 s | **16,47 s** |
+| Tempo total de relógio | **65 s** | 166 s | **65 s** | 168 s | **73 s** | 148 s |
 
 - A **neuroevolução larga na frente**: com 100 políticas inteiras sendo sorteadas, alguma
-  logo acerta a pista. O PPO precisa de ~3 h de experiência até "entender" a primeira volta.
-- Depois disso o **PPO aprende mais por hora de experiência** e termina um pouco melhor —
-  mas as duas chegam perto do limite da física do carro (~14 s por volta).
-- Em **tempo de relógio, a neuroevolução sai 2,2 a 2,5× mais barata**: não tem backpropagation e
+  logo acerta a pista. O PPO precisa de 3 a 5 h de experiência até "entender" a primeira volta.
+- Depois disso o **PPO aprende mais por hora de experiência** e termina na frente — pouco nas
+  pistas fáceis, onde as duas chegam perto do limite da física do carro, e mais na teste01,
+  a pista com os grampos mais fechados (1,2 s por volta).
+- Em **tempo de relógio, a neuroevolução sai 2 a 2,6× mais barata**: não tem backpropagation e
   a rede dela tem 160 pesos, contra 69 mil.
 
-**Generalização** (os cérebros de neuroevolução são os treinados por você, em 7 a 20
-gerações; os do PPO tiveram ~28 h de experiência, então não é uma disputa de igual para
-igual — para isso servem as curvas acima):
+**A recompensa importa muito no PPO.** Na primeira versão, bater custava uma penalidade, e o
+PPO travava em 0,32 volta na teste01: aprendia a *parar* antes do grampo, porque ser eliminado
+por ficar parado custava a mesma penalidade, só que 3 s depois — e o PPO desconta o futuro.
+Com a recompensa sendo só o avanço na pista (o mesmo que o fitness da neuroevolução mede),
+um horizonte maior e mais exploração no começo, ele passou a resolver a pista.
+
+**E por que os carros do PPO largam espalhados?** Cada carro é uma tentativa independente, e
+a rede aprende com cada passo de cada um. Largar de pontos aleatórios treina a pista inteira
+desde o começo. Testamos largar todos da linha, como na neuroevolução: o PPO travou no primeiro
+grampo da teste01 (0,25 volta), porque nunca praticava o resto da pista (`--largada-na-linha`).
+
+**Generalização** (`python main.py comparar` avalia os cérebros que estiverem salvos — os
+números abaixo são de uma rodada; treinos diferentes dão cérebros diferentes):
 
 - Treinados na Clássica, os dois andam bem no Oval, no Feijão e na Serpentina, que nunca
-  viram. Mas só o PPO passou no Desafio: 3,07 voltas, contra uma batida em 0,24 volta.
-  Média nas pistas inéditas: PPO 3,77 × neuroevolução 3,06 voltas.
-- **A pista de treino importa mais que a técnica**: treinados no Feijão (uma pista fácil),
-  os dois métodos batem nas pistas difíceis.
-- O **PPO generalista**, treinado nas 4 pistas ao mesmo tempo (20 milhões de passos,
-  ~7 min), dirige em cada uma delas tão bem quanto o especialista daquela pista.
-- **Ninguém passa do grampo da pista `teste01`**: depois da reta mais longa vem uma volta
-  de quase 180° muito fechada, diferente de tudo que os cérebros viram no treino.
+  viram. No Desafio, só o PPO passou (3,07 voltas); a neuroevolução bateu.
+- **A pista de treino importa tanto quanto a técnica**: o cérebro de neuroevolução treinado
+  na teste01, a pista mais difícil, passou em todas as outras (4,47 voltas de média nas
+  inéditas), enquanto cérebros treinados em pistas fáceis, como o Feijão, batem nas difíceis.
+- Treinar o PPO em várias pistas ao mesmo tempo (`--pistas`) deu um cérebro que dirige em
+  cada uma tão bem quanto o especialista daquela pista.
 
 Cada número vem de uma única execução de treino, e os dois métodos usam sorteios. Rodando
 de novo, os números mudam um pouco — principalmente quando a neuroevolução acha a primeira
