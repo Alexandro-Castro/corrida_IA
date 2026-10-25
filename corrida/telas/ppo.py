@@ -8,6 +8,9 @@ segundo e travariam a janela). Na pista aparecem:
   os comandos em volta do que a rede sugere — por isso dirigem meio "nervosos";
 - o carro de teste (dourado): a política atual sem sorteio, largando da linha de
   chegada — é ele que mostra o que a rede já sabe fazer.
+
+Como isso é bem diferente das gerações da neuroevolução, a tela abre com uma
+explicação (tecla H).
 """
 
 import math
@@ -21,11 +24,28 @@ import torch
 from .. import arquivos, desenho
 from ..app import Tela
 from ..carros import Frota
-from ..interface import (DESTAQUE, FUNDO, LARANJA, TEXTO, VERDE, VERMELHO, Aviso, Painel, Vista, dividir_tela,
-                         numero, tempo, texto)
+from ..interface import (DESTAQUE, FUNDO, LARANJA, PAINEL, TEXTO, TEXTO_FRACO, VERDE, VERMELHO, Aviso, Painel,
+                         Vista, dividir_tela, numero, quebrar_linhas, tempo, texto)
 from ..rl.ppo import TreinadorPPO
 
 COR_EXPLORANDO = (86, 170, 255)
+
+EXPLICACAO = [
+    "Na neuroevolução há 100 redes diferentes, uma por carro, e cada uma só recebe nota no fim da "
+    "geração. Por isso todos largam juntos e correm até ser eliminados.",
+    "No PPO há uma rede só, dirigindo todos os carros. Ela aprende com cada passo de cada carro: "
+    "avançou, ganha recompensa; bateu, perde tudo o que ainda andaria. Ninguém espera ninguém — "
+    "quando um carro bate, só ele recomeça.",
+    None,     # depende de onde os carros largam (abaixo)
+    "Os carros azuis dirigem \"nervosos\" porque sorteiam cada comando em volta do que a rede sugere: "
+    "é assim que o PPO experimenta. O carro dourado é a rede de verdade, sem sorteio, largando da linha "
+    "— o equivalente ao líder da neuroevolução.",
+]
+LARGADA_ALEATORIA = ("Os carros recomeçam em pontos aleatórios para praticar a pista inteira desde o início. "
+                     "Largando todos da linha, eles só treinariam até a primeira curva difícil e travariam nela "
+                     "(na teste01, ficaram presos em 0,25 volta).")
+LARGADA_NA_LINHA = ("Neste treino todos largam da linha de chegada, como na neuroevolução (--largada-na-linha). "
+                    "Repare que eles só praticam o começo da pista: numa curva difícil, o treino pode travar.")
 
 
 def curva_neuroevolucao(pista):
@@ -51,6 +71,9 @@ class TelaPPO(Tela):
         self.recomecar_ate = 0
         self.vista = None
         self.aviso = Aviso()
+        # a explicação aparece sozinha na primeira vez que a tela abre (depois, tecla H)
+        self.explicando = not getattr(app, "ppo_explicado", False)
+        app.ppo_explicado = True
         self._iniciar(continuar)
         self._mostrar_pista(0)
 
@@ -122,10 +145,14 @@ class TelaPPO(Tela):
         self.fundo = self.vista.ajustar(self.imagem)
 
     def evento(self, ev):
+        if ev.type == pygame.MOUSEBUTTONDOWN and self.explicando:
+            self.explicando = False
         if ev.type != pygame.KEYDOWN:
             return
         k = ev.key
-        if k == pygame.K_ESCAPE:
+        if k == pygame.K_h:
+            self.explicando = not self.explicando
+        elif k == pygame.K_ESCAPE:
             self.voltar()
         elif k == pygame.K_SPACE:
             self.pausado = not self.pausado
@@ -177,7 +204,36 @@ class TelaPPO(Tela):
         if self.erro is not None:
             texto(sup, f"Erro no treino: {self.erro}", self.app.fontes.negrito, VERMELHO,
                   (v.rect.centerx, v.rect_mundo.y + 60 * e), "midtop")
+        if self.explicando:
+            self._desenhar_explicacao(sup)
         self.aviso.desenhar(sup, self.app.fontes, v.rect.centerx, v.rect_mundo.bottom - 64 * e)
+
+    def _desenhar_explicacao(self, sup):
+        e = self.app.escala_ui
+        f = self.app.fontes
+        largura = min(round(760 * e), self.vista.rect.w - round(40 * e))
+        pad = round(26 * e)
+        paragrafos = [p or (LARGADA_ALEATORIA if self.treinador.p.largada_aleatoria else LARGADA_NA_LINHA)
+                      for p in EXPLICACAO]
+        blocos = [quebrar_linhas(p, f.normal, largura - 2 * pad) for p in paragrafos]
+        linha = f.normal.get_linesize()
+        altura = (f.subtitulo.get_linesize() + round(14 * e) + sum(len(b) * linha + round(10 * e) for b in blocos)
+                  + f.pequena.get_linesize() + 2 * pad)
+        caixa = pygame.Rect(0, 0, largura, altura)
+        caixa.center = self.vista.rect_mundo.center
+        fundo = pygame.Surface(caixa.size, pygame.SRCALPHA)
+        pygame.draw.rect(fundo, (*PAINEL, 240), fundo.get_rect(), border_radius=round(14 * e))
+        sup.blit(fundo, caixa)
+        pygame.draw.rect(sup, DESTAQUE, caixa, max(1, round(2 * e)), border_radius=round(14 * e))
+        y = caixa.y + pad
+        r = texto(sup, "Por que o treino do PPO é diferente?", f.subtitulo, DESTAQUE, (caixa.x + pad, y))
+        y = r.bottom + round(14 * e)
+        for bloco in blocos:
+            for conteudo in bloco:
+                texto(sup, conteudo, f.normal, TEXTO, (caixa.x + pad, y))
+                y += linha
+            y += round(10 * e)
+        texto(sup, "H ou um clique para fechar", f.pequena, TEXTO_FRACO, (caixa.x + pad, y))
 
     def _desenhar_legenda(self, sup):
         f = self.app.fontes
@@ -197,7 +253,8 @@ class TelaPPO(Tela):
         e = self.app.escala_ui
         fontes = self.app.fontes
         p = Painel(sup, self.rect_painel, fontes)
-        atalhos = [("Espaço", "pausar / continuar o treino"), ("S", "sensores"), ("C", "carros do treino"),
+        atalhos = [("H", "por que é diferente da neuroevolução?"),
+                   ("Espaço", "pausar / continuar o treino"), ("S", "sensores"), ("C", "carros do treino"),
                    ("R", "recomeçar o carro de teste"), ("N  N", "recomeçar o PPO do zero"),
                    ("Esc", "voltar ao menu (o treino fica salvo)")]
         if len(self.pistas) > 1:

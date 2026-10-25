@@ -34,14 +34,14 @@ class TestAmbiente(unittest.TestCase):
         esperado = amb.frotas[0].progresso[0] / (config.VELOCIDADE_MAX * config.DT) * 0.1
         self.assertAlmostEqual(total, esperado, places=6)
 
-    def test_bater_termina_penaliza_e_recomeca(self):
+    def test_bater_termina_e_recomeca(self):
         amb = AmbienteCorrida([pista_oval()], carros_por_pista=1, largada_aleatoria=False)
         for _ in range(300):
             _, r, terminou, _, _ = amb.passo(np.array([[1.0, 1.0]]))     # sempre para a direita
             if terminou[0]:
                 break
         self.assertTrue(terminou[0])
-        self.assertLess(r[0], -PENALIDADE_BATIDA + 0.2)
+        self.assertLessEqual(r[0], -PENALIDADE_BATIDA + 1e-9)        # no passo da batida não há avanço
         self.assertTrue(amb.frotas[0].vivo[0])
         self.assertEqual(amb.passos[0], 0)
         self.assertEqual(len(amb.episodios), 1)

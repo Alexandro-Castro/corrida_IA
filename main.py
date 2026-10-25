@@ -46,6 +46,8 @@ def parametros_ppo(args, ppo):
         p.camadas = tuple(int(c) for c in args.camadas.split(","))
     if args.carros:
         p.carros = args.carros
+    if args.largada_na_linha:
+        p.largada_aleatoria = False
     return p
 
 
@@ -90,6 +92,8 @@ def main():
     ppo.add_argument("--dispositivo", default="auto", choices=("auto", "cuda", "cpu"), help="GPU (cuda) ou CPU")
     ppo.add_argument("--camadas", help="camadas ocultas, ex.: 256,256 (padrão: 256,256 na GPU e 64,64 na CPU)")
     ppo.add_argument("--carros", type=int, help="carros em paralelo, divididos entre as pistas (padrão: 256)")
+    ppo.add_argument("--largada-na-linha", action="store_true",
+                     help="todos largam da linha de chegada, como na neuroevolução (em vez de pontos aleatórios)")
 
     comparar = sub.add_parser("comparar", help="comparar neuroevolução e PPO (gera resultados/comparacao.md)")
     comparar.add_argument("--curvas", action="store_true",

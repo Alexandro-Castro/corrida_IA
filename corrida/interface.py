@@ -73,6 +73,21 @@ def texto(sup, conteudo, fonte, cor, pos, ancora="topleft"):
     return r
 
 
+def quebrar_linhas(conteudo, fonte, largura):
+    """Divide um texto em linhas que caibam na largura dada."""
+    linhas, linha = [], ""
+    for palavra in conteudo.split():
+        tentativa = f"{linha} {palavra}".strip()
+        if linha and fonte.size(tentativa)[0] > largura:
+            linhas.append(linha)
+            linha = palavra
+        else:
+            linha = tentativa
+    if linha:
+        linhas.append(linha)
+    return linhas
+
+
 def dividir_tela(tamanho, escala_ui, largura_painel=360):
     """Área da pista (esquerda) e do painel lateral (direita)."""
     largura, altura = tamanho
@@ -174,15 +189,7 @@ class Painel:
     def paragrafo(self, conteudo, cor=TEXTO_FRACO, fonte=None):
         """Texto com quebra de linha automática na largura do painel."""
         fonte = fonte or self.f.normal
-        linha = ""
-        for palavra in conteudo.split():
-            tentativa = f"{linha} {palavra}".strip()
-            if linha and fonte.size(tentativa)[0] > self.w:
-                self.texto(linha, cor, fonte)
-                linha = palavra
-            else:
-                linha = tentativa
-        if linha:
+        for linha in quebrar_linhas(conteudo, fonte, self.w):
             self.texto(linha, cor, fonte)
 
     def espaco(self, px):

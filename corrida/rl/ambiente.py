@@ -7,9 +7,11 @@ esse sinal, passo a passo, que o PPO ajusta a rede.
 
 - Observação: as mesmas 10 entradas da neuroevolução (9 sensores + velocidade).
 - Ação: direção e acelerador, de -1 a 1 (as mesmas 2 saídas).
-- Recompensa: quanto o carro avançou no sentido da pista naquele passo
-  (andar para trás dá recompensa negativa). Bater custa uma penalidade.
+- Recompensa: quanto o carro avançou no sentido da pista naquele passo (andar para
+  trás dá recompensa negativa) — a mesma coisa que o fitness da neuroevolução mede.
 - Episódio: termina quando o carro bate ou fica parado; é cortado no tempo máximo.
+  Bater já custa caro: o carro perde tudo o que ainda andaria. Uma penalidade extra
+  por batida atrapalha — ver PENALIDADE_BATIDA.
 
 Vários carros rodam em paralelo (um "ambiente vetorizado") e cada um recomeça sozinho,
 de preferência num ponto aleatório da pista — assim todos os trechos da pista são
@@ -24,7 +26,11 @@ from .. import config
 from ..carros import Frota
 
 ESCALA_RECOMPENSA = 0.1      # avançar à velocidade máxima rende 0,1 por passo
-PENALIDADE_BATIDA = 1.0
+# Com uma penalidade por batida (testamos 1,0), o PPO aprende a ter "medo" de curvas difíceis:
+# parar na frente delas também encerra o episódio (sem avançar por 3 s), mas o custo vem 3 s
+# depois e chega descontado — sai ~6× mais barato que tentar e bater. Na pista teste01 ele
+# congelava na entrada de um grampo para sempre (0,32 volta); sem a penalidade, passa (2,7 voltas).
+PENALIDADE_BATIDA = 0.0
 
 
 class AmbienteCorrida:

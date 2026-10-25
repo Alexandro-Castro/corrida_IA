@@ -45,15 +45,18 @@ class ParametrosPPO:
     minilotes: int = 8
     taxa_aprendizado: float = 3e-4   # cai em linha reta até 10% disso ao longo de `passos_planejados`
     passos_planejados: int = 10_000_000
-    gamma: float = 0.99              # desconto: quanto o futuro vale (0,99 ≈ olhar ~1,7 s à frente)
+    gamma: float = 0.995             # desconto: quanto o futuro vale (0,995 ≈ olhar ~3,3 s à frente;
+                                     # com 0,99, ~1,7 s, ele freava tarde demais para grampos)
     lambda_gae: float = 0.95
     clip: float = 0.2                # quanto a política pode mudar por atualização
     kl_alvo: float = 0.02            # para a atualização mais cedo se a política mudar demais
     coef_valor: float = 0.5
     coef_entropia: float = 0.0
     max_norma_gradiente: float = 0.5
-    log_std_inicial: float = -0.5    # exploração inicial: desvio padrão ≈ 0,6
-    largada_aleatoria: bool = True
+    log_std_inicial: float = 0.0     # exploração inicial: desvio padrão 1 (bastante sorteio no começo;
+                                     # o PPO diminui sozinho conforme aprende)
+    largada_aleatoria: bool = True   # False: todos largam da linha de chegada, como na neuroevolução
+                                     # (aí o treino trava na primeira curva difícil da pista)
     avaliar_a_cada: int = 5          # atualizações entre duas avaliações justas
 
 
